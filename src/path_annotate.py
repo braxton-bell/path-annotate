@@ -163,16 +163,17 @@ class ResolvedConfig:
 
 classLogger = logging.getLogger("PathHeaderAnnotator")
 
+
 class ConsoleManager:
     """Manages console output, respecting quiet/verbose/color flags."""
     def __init__(self, level: int, no_color: bool):
-        self.level = level
+        self._level = level
         self.no_color = no_color
         if not no_color:
             init(autoreset=True)
 
     def _log(self, msg: str, log_level: int, color: str = ""):
-        if log_level < self.level:
+        if log_level < self._level:
             return
         
         if not self.no_color and color:
@@ -204,7 +205,7 @@ class ConsoleManager:
 
     def report_outcome(self, outcome: FileOutcome, dry_run: bool):
         """Log a single file outcome if verbosity allows."""
-        if self.level > logging.DEBUG:
+        if self._level > logging.DEBUG:
             return # Only show per-file in verbose
 
         dry_prefix = "[DRY RUN] " if dry_run else ""
@@ -225,7 +226,7 @@ class ConsoleManager:
 
     def print_summary(self, report: RunReport):
         """Print the final summary table."""
-        if self.level > logging.INFO: # Only suppress if quiet
+        if self._level > logging.INFO: # Only suppress if quiet
             return
 
         print("\n--- Path Annotation Summary ---")

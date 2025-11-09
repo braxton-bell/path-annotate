@@ -1,0 +1,61 @@
+{
+  //
+  // Example Configuration for py_api_inventory.py (JSONC)
+  // CLI arguments will override any values set in this file.
+  //
+
+  // --- Toggles ---
+
+  // If true, include only public items (name does not start with _).
+  // __init__ methods are always included.
+  "public_only": true,
+
+  // If true, inventories module-level and class-level constants.
+  "include_constants": true,
+
+  // If true, includes docstrings for modules, classes, and methods.
+  "include_docstrings": true,
+
+  // If true, explicitly identifies classes that subclass 'Enum' (or variants).
+  "include_enums": true,
+
+  // If true, inventories module-level functions.
+  "include_functions": true,
+
+  // If true, applies .strip() to all captured docstrings.
+  "strip_docstrings": true,
+
+  // --- Strategies ---
+
+  // 'any_dir_with_py': (Default) Any directory containing .py files is a package.
+  // 'require_init_py': Only directories containing an __init__.py are packages.
+  "package_mode": "any_dir_with_py",
+
+  // 'no_underscore': (Default) Any 'public' variable (no leading _) is a constant.
+  // 'uppercase': Only 'public' ALL_CAPS variables are constants.
+  "constant_visibility": "no_underscore",
+
+  // --- Formatting ---
+
+  // If true (Default), prefixes all paths in the YAML with a leading '/'.
+  "leading_slash_in_paths": true,
+
+
+  // --- Exclusions ---
+
+  // Global exclude patterns (Git-style globs) relative to the --root.
+  // These are combined with any --exclude patterns from the CLI.
+  "exclude": [
+    "**/.venv/**",
+    "**/__pycache__/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/*.egg-info/**",
+    "**/.*",
+    "**/*_test.py",
+    "**/test_*.py",
+    "**/tests/**",
+    "**/*.ipynb"
+  ]
+}
