@@ -34,6 +34,46 @@
       ]
     },
     {
+      "name": "json",
+      "enabled": true,
+      "comment_prefix": "//",
+      "required_suffix": ".json",
+      "globs": ["**/*.json"],
+      // Exclude common lock files and config that shouldn't be touched
+      "exclude": [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**",
+        "package-lock.json",
+        "composer.lock",
+        "tsconfig.json" // Often managed by tools
+      ]
+    },
+    {
+      "name": "jsonc",
+      "enabled": true,
+      "comment_prefix": "//",
+      "required_suffix": ".jsonc",
+      "globs": ["**/*.jsonc"],
+      "exclude": [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**"
+      ]
+    },
+    {
+      "name": "json5",
+      "enabled": true,
+      "comment_prefix": "//",
+      "required_suffix": ".json5",
+      "globs": ["**/*.json5"],
+      "exclude": [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**"
+      ]
+    },
+    {
       "name": "javascript",
       "enabled": false,
       "comment_prefix": "//",
