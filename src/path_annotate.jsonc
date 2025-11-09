@@ -1,0 +1,68 @@
+{
+  // -----------------------------------------------------------------
+  // Path Comment Annotator Signatures
+  // -----------------------------------------------------------------
+  // Signatures are processed in order. The first one that matches
+  // a file is used.
+  // -----------------------------------------------------------------
+
+  "signatures": [
+    {
+      "name": "python",
+      "enabled": true,
+      "comment_prefix": "#",
+      "required_suffix": ".py",
+      // Use 'globs' for precise matching
+      //"globs": ["**/*.py"],
+      // Use 'exclude' for per-signature ignores.
+      // These are in addition to any --exclude flags on the CLI.
+      "exclude": [
+        "**/.venv/**",
+        "**/__pycache__/**",
+        "**/*.ipynb" // In case .py is used by notebooks
+      ]
+    },
+    {
+      "name": "sql",
+      "enabled": true,
+      "comment_prefix": "--",
+      "required_suffix": ".sql",
+      "globs": ["**/*.sql"],
+      "exclude": [
+        "**/logs/**",
+        "**/target/**" // Exclude compiled build artifacts
+      ]
+    },
+    {
+      "name": "javascript",
+      "enabled": false,
+      "comment_prefix": "//",
+      "required_suffix": ".js",
+      "globs": ["**/*.js", "**/*.jsx"],
+      "exclude": [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/*.min.js" // Don't touch minified files
+      ]
+    },
+    {
+      "name": "typescript",
+      "enabled": false,
+      "comment_prefix": "//",
+      "required_suffix": ".ts", // Use a generic suffix
+      // Use 'extensions' to catch multiple types
+      "extensions": [".ts", ".tsx"],
+      "exclude": [
+        "**/node_modules/**",
+        "**/dist/**"
+      ]
+    },
+    {
+      "name": "shell",
+      "enabled": false, // This signature is currently disabled
+      "comment_prefix": "#",
+      "required_suffix": ".sh",
+      "extensions": [".sh", ".bash", ".zsh"]
+    }
+  ]
+}
