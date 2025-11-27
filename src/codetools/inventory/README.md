@@ -49,7 +49,7 @@ Scan the current directory, use the example config, find `pyproject.toml`, and w
 
 Scan the `./src` directory, require `__init__.py` for packages, include docstrings, and only list `ALL_CAPS` constants.
 
-```
+```sh
 ./py_api_inventory.py \
   --root ./src \
   --package-mode require_init_py \
@@ -63,7 +63,7 @@ Scan the `./src` directory, require `__init__.py` for packages, include docstrin
 
 Scan the current directory, include private (`_`) and dunder (`__`) methods, include module-level functions, and pipe the YAML to `stdout`.
 
-```
+```sh
 ./py_api_inventory.py \
   --root . \
   --all-methods \
@@ -75,7 +75,7 @@ Scan the current directory, include private (`_`) and dunder (`__`) methods, inc
 
 The tool is implemented as a class and can be imported and used from other Python scripts.
 
-```
+```python
 import sys
 from py_api_inventory import PythonApiSignatureExtractor, ConsoleManager
 
@@ -148,7 +148,7 @@ YAML Output Schema
 
 The output is a single YAML document conforming to the following structure. Optional keys (like `docstring` or `constants`) will be omitted entirely if disabled via config or if no items are found.
 
-```
+```yaml
 # Schema version for this output format
 schema_version: "1.0"
 meta:

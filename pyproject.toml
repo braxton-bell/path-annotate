@@ -9,10 +9,10 @@ requires-python = ">=3.12"
 description = "A Toolkit for Generating and Managing Code Documentation"
 readme = "README.md"
 dependencies = [
-    "commentjson",
-    "pathspec",
-    "colorama",
-    "PyYAML",
+    "commentjson>=0.9.0",
+    "pathspec>=0.12.0",
+    "colorama>=0.4.6",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
