@@ -1,0 +1,12 @@
+[flake8]
+extend-ignore = E203, E501, W503
+max-line-length = 88
+max-complexity = 10
+
+per-file-ignores =
+    
+    # Ignore unused imports for __init__.py files
+    ./src/**/__init__.py: F401
+
+    # Ignore whitespace and complexity issues in py_api_inventory.py
+    src/codetools/inventory/py_api_inventory.py: W291, C901

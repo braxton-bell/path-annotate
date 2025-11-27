@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codetools"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "A Toolkit for Generating and Managing Code Documentation"
+readme = "README.md"
+dependencies = [
+    "commentjson",
+    "pathspec",
+    "colorama",
+    "PyYAML",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Core developer workflow
+    "pre-commit>=4.4.0",
+    "pip-tools>=7.5.2",
+    "pip-audit>=2.9.0",
+    "deptry>=0.24.0",
+
+    # Testing
+    "pytest>=9.0.1", # updated from version >=8.3.3
+    "pytest-cov>=7.0.0",
+    "pytest-asyncio>=1.3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/braxton-bell/path-annotate"
+
+### console entry points ###
+[project.scripts]
+# getgrid = "jorie.rcmap.rpa.tools.getgrid:main"
+# getscene = "jorie.rcmap.rpa.tools.getscene:main"
+# getbox = "jorie.rcmap.rpa.tools.getbox:main"
+
+### tool configurations ###
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+include = [
+    "codetools*",
+]
+exclude = ["tests*"]
+
+[tool.deptry]
+known_first_party = ["codetools"]
+per_rule_ignores = { "DEP002" = [
+    "pre-commit",
+    "pip-tools",
+    "pip-audit",
+    "deptry",
+    "pytest",
+    "pytest-cov",
+    "pytest-asyncio",
+] }
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+include = '\.pyi?$'
+exclude = '''
+/(
+  \.toml
+  |\.git
+  |\.venv
+)/
+'''
+
+### Coverage Configuration ###
+[tool.coverage.run]
+source = ["src"]
+omit = ["tests/*", "*/site-packages/*"]
+
+### Pytest Configuration ###
+[tool.pytest.ini_options]
+addopts = [
+    "--cov=src",
+    "--cov-report=term-missing", # Good practice: shows missing lines in terminal
+]

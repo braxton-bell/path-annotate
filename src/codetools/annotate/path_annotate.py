@@ -18,52 +18,58 @@ Install dependencies:
 """
 
 import argparse
-import os
-import sys
-import re
-import logging
-from pathlib import Path
-from typing import (
-    List, Optional, Tuple, Literal, NamedTuple, Dict, ClassVar, Set
-)
-from dataclasses import dataclass, field
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import fnmatch
+import logging
+import os
+import re
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import ClassVar, List, Literal, NamedTuple, Optional, Tuple
 
 # Attempt to import dependencies
 try:
     import commentjson
     import pathspec
-    from colorama import init, Fore, Style
+    from colorama import Fore, Style, init
 except ImportError as e:
     print(
         f"Error: Missing required dependency. {e}\n"
         "Please install requirements: "
         "pip install commentjson pathspec colorama",
-        file=sys.stderr
+        file=sys.stderr,
     )
     sys.exit(1)
 
 # --- Type Definitions & Result Models ---
 
 ActionType = Literal[
-    "inserted", "updated", "skipped_correct", "skipped_no_match", 
-    "skipped_excluded", "error"
+    "inserted",
+    "updated",
+    "skipped_correct",
+    "skipped_no_match",
+    "skipped_excluded",
+    "error",
 ]
 
 HeaderAction = Literal["insert", "update", "skip"]
 
+
 @dataclass(slots=True)
 class FileOutcome:
     """Result of processing a single file."""
+
     path: str
     action: ActionType
     signature_name: Optional[str] = None
     reason: Optional[str] = None
 
+
 @dataclass
 class RunReport:
     """Summary of a full annotation run."""
+
     files_scanned: int = 0
     files_inserted: int = 0
     files_updated: int = 0
@@ -88,7 +94,7 @@ class RunReport:
             self.files_skipped_excluded += 1
         elif outcome.action == "error":
             self.files_with_errors += 1
-        
+
         # Only store detailed outcomes if not quiet (to save memory)
         # We will filter this in the caller based on verbosity.
         self.outcomes.append(outcome)
@@ -102,13 +108,16 @@ class RunReport:
     def total_matched(self) -> int:
         """Return total files that matched a signature."""
         return (
-            self.files_inserted + self.files_updated + 
-            self.files_skipped_correct + self.files_skipped_excluded
+            self.files_inserted
+            + self.files_updated
+            + self.files_skipped_correct
+            + self.files_skipped_excluded
         )
 
 
 class HeaderDecision(NamedTuple):
     """Internal decision model for file content modification."""
+
     action: HeaderAction
     text: str
     line_index: int
@@ -117,6 +126,7 @@ class HeaderDecision(NamedTuple):
 @dataclass(slots=True, frozen=True)
 class Signature:
     """A normalized, compiled signature rule."""
+
     name: str
     comment_prefix: str
     required_suffix: str
@@ -131,7 +141,7 @@ class Signature:
         name = d["name"]
         prefix = d["comment_prefix"]
         suffix = d["required_suffix"]
-        
+
         escaped_prefix = re.escape(prefix)
         escaped_suffix = re.escape(suffix)
         pattern = re.compile(rf"^{escaped_prefix}\s+\S+{escaped_suffix}$")
@@ -149,13 +159,14 @@ class Signature:
             extensions=d.get("extensions"),
             globs=d.get("globs"),
             exclude_spec=exclude_spec,
-            detection_pattern=pattern
+            detection_pattern=pattern,
         )
 
 
 @dataclass(slots=True, frozen=True)
 class ResolvedConfig:
     """Holds all compiled signatures."""
+
     signatures: List[Signature]
 
 
@@ -166,6 +177,7 @@ classLogger = logging.getLogger("PathHeaderAnnotator")
 
 class ConsoleManager:
     """Manages console output, respecting quiet/verbose/color flags."""
+
     def __init__(self, level: int, no_color: bool):
         self._level = level
         self.no_color = no_color
@@ -175,10 +187,10 @@ class ConsoleManager:
     def _log(self, msg: str, log_level: int, color: str = ""):
         if log_level < self._level:
             return
-        
+
         if not self.no_color and color:
             msg = f"{color}{msg}{Style.RESET_ALL}"
-        
+
         if log_level >= logging.ERROR:
             logging.error(msg)
         elif log_level >= logging.WARNING:
@@ -199,18 +211,18 @@ class ConsoleManager:
 
     def error(self, msg: str):
         self._log(msg, logging.ERROR, Fore.RED)
-     
+
     def critical(self, msg: str):
         self._log(msg, logging.CRITICAL, Fore.RED + Style.BRIGHT)
 
     def report_outcome(self, outcome: FileOutcome, dry_run: bool):
         """Log a single file outcome if verbosity allows."""
         if self._level > logging.DEBUG:
-            return # Only show per-file in verbose
+            return  # Only show per-file in verbose
 
         dry_prefix = "[DRY RUN] " if dry_run else ""
         path_str = str(outcome.path)
-        
+
         if outcome.action == "inserted":
             self.debug(f"{dry_prefix}INSERT:  {path_str} (as {outcome.signature_name})")
         elif outcome.action == "updated":
@@ -226,13 +238,13 @@ class ConsoleManager:
 
     def print_summary(self, report: RunReport):
         """Print the final summary table."""
-        if self._level > logging.INFO: # Only suppress if quiet
+        if self._level > logging.INFO:  # Only suppress if quiet
             return
 
         print("\n--- Path Annotation Summary ---")
-        
+
         total_matched = report.total_matched
-        
+
         # Helper for coloring non-zero values
         def color_val(val, color_if_nonzero):
             if val > 0 and not self.no_color:
@@ -255,7 +267,7 @@ class ConsoleManager:
         for label, value, color in summary_data:
             val_str = color_val(value, color)
             print(f"{label:<{max_label}} : {val_str}")
-        
+
         print("-------------------------------")
         if report.total_changes > 0:
             self.info(f"Run complete. {report.total_changes} file(s) changed.")
@@ -265,12 +277,13 @@ class ConsoleManager:
 
 # --- Main Annotator Class ---
 
+
 class PathHeaderAnnotator:
     """
     Recursively annotates files with a first-nonblank-line path comment
     based on configured signatures. Idempotent.
     """
-    
+
     _config: ResolvedConfig
     _root: Path
     _global_exclude_spec: Optional[pathspec.PathSpec]
@@ -281,7 +294,7 @@ class PathHeaderAnnotator:
     # Use ClassVar for defaults that don't change per instance
     DEFAULT_ENCODING: ClassVar[str] = "utf-8"
     FALLBACK_ENCODING: ClassVar[str] = "latin-1"
-    
+
     # Regex to detect encoding cookies (PEP 263 style)
     # Checks for: # ... coding=utf-8 ...
     ENCODING_PATTERN: ClassVar[re.Pattern] = re.compile(
@@ -304,7 +317,7 @@ class PathHeaderAnnotator:
         self._global_exclude_spec = global_exclude_spec
         self._dry_run = dry_run
         self._concurrency = max(1, concurrency)
-        
+
         if not self._root.is_dir():
             raise FileNotFoundError(f"Root directory not found: {self._root}")
 
@@ -319,16 +332,16 @@ class PathHeaderAnnotator:
         enabled_signature_names: Optional[List[str]] = None,
         dry_run: bool = False,
         verbose: bool = False,  # Note: verbose/quiet handled in logger
-        quiet: bool = False,    # Note: verbose/quiet handled in logger
+        quiet: bool = False,  # Note: verbose/quiet handled in logger
         concurrency: Optional[int] = None,
     ) -> "PathHeaderAnnotator":
         """Factory that loads and validates the JSON/JSONC configuration."""
-        
+
         root_path = Path(root)
-        
+
         # 1. Load and normalize config
         config = cls.load_config(config_path)
-        
+
         # 2. Filter signatures if names are provided
         if enabled_signature_names:
             enabled_set = set(enabled_signature_names)
@@ -343,16 +356,18 @@ class PathHeaderAnnotator:
                         f"Specified signature(s) not found in config: {missing}"
                     )
             config = ResolvedConfig(signatures=filtered_signatures)
-            
+
         # 3. Compile global excludes
         global_exclude_spec = None
         if excludes:
             global_exclude_spec = pathspec.PathSpec.from_lines(
                 pathspec.patterns.GitWildMatchPattern, excludes
             )
-            
+
         # 4. Determine concurrency
-        resolved_concurrency = concurrency if concurrency is not None else os.cpu_count() or 4
+        resolved_concurrency = (
+            concurrency if concurrency is not None else os.cpu_count() or 4
+        )
 
         return cls(
             root=root_path,
@@ -369,21 +384,21 @@ class PathHeaderAnnotator:
         config_file = Path(config_path)
         if not config_file.is_file():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-        
+
         try:
-            with open(config_file, 'r', encoding='utf-8') as f:
+            with open(config_file, "r", encoding="utf-8") as f:
                 data = commentjson.load(f)
         except Exception as e:
             raise ValueError(f"Failed to parse config file {config_path}: {e}")
 
         if "signatures" not in data or not isinstance(data["signatures"], list):
-            raise ValueError(f"Config must have a top-level 'signatures' array.")
+            raise ValueError("Config must have a top-level 'signatures' array.")
 
         signatures = []
         for i, sig_dict in enumerate(data["signatures"]):
             if not sig_dict.get("enabled", False):
                 continue
-            
+
             # Validate required keys
             for key in ("name", "comment_prefix", "required_suffix"):
                 if key not in sig_dict:
@@ -391,9 +406,9 @@ class PathHeaderAnnotator:
                         f"Signature #{i} (name: {sig_dict.get('name', 'N/A')}) "
                         f"is missing required key: '{key}'"
                     )
-            
+
             signatures.append(Signature.from_dict(sig_dict))
-            
+
         return ResolvedConfig(signatures=signatures)
 
     def run(self) -> RunReport:
@@ -404,15 +419,15 @@ class PathHeaderAnnotator:
         self._logger.info(f"Starting scan from root: {self._root}")
         if self._dry_run:
             self._logger.warning("Running in [DRY RUN] mode. No files will be changed.")
-            
+
         report = RunReport()
         files_to_process = []
-        
+
         self._logger.debug("Collecting and sorting files...")
         for file_path in self._root.rglob("*"):
             if file_path.is_file() and not file_path.is_symlink():
                 files_to_process.append(file_path)
-                
+
         # Deterministic order
         files_to_process.sort()
         self._logger.debug(f"Found {len(files_to_process)} total files to scan.")
@@ -422,7 +437,7 @@ class PathHeaderAnnotator:
                 executor.submit(self.process_file, path): path
                 for path in files_to_process
             }
-            
+
             for future in as_completed(futures):
                 path = futures[future]
                 try:
@@ -432,9 +447,7 @@ class PathHeaderAnnotator:
                 except Exception as e:
                     relpath = self.normalize_relpath(self._root, path)
                     outcome = FileOutcome(
-                        path=relpath,
-                        action="error",
-                        reason=f"Unhandled exception: {e}"
+                        path=relpath, action="error", reason=f"Unhandled exception: {e}"
                     )
                     report.tally(outcome)
                     self._logger.report_outcome(outcome, self._dry_run)
@@ -449,92 +462,83 @@ class PathHeaderAnnotator:
         This is the core worker function for the thread pool.
         """
         relpath = self.normalize_relpath(self._root, file_path)
-        
+
         try:
             # 1. Global Exclude Check
-            if (self._global_exclude_spec and 
-                self._global_exclude_spec.match_file(relpath)):
+            if self._global_exclude_spec and self._global_exclude_spec.match_file(
+                relpath
+            ):
                 return FileOutcome(
-                    path=relpath, 
-                    action="skipped_excluded", 
-                    reason="Global exclude"
+                    path=relpath, action="skipped_excluded", reason="Global exclude"
                 )
-                
+
             # 2. Find Matching Signature
             matched_sig = None
             for sig in self._config.signatures:
                 if self._matches_signature(relpath, sig):
                     matched_sig = sig
                     break
-            
+
             if not matched_sig:
                 return FileOutcome(path=relpath, action="skipped_no_match")
 
             # 3. Per-Signature Exclude Check
-            if (matched_sig.exclude_spec and 
-                matched_sig.exclude_spec.match_file(relpath)):
+            if matched_sig.exclude_spec and matched_sig.exclude_spec.match_file(
+                relpath
+            ):
                 return FileOutcome(
-                    path=relpath, 
-                    action="skipped_excluded", 
+                    path=relpath,
+                    action="skipped_excluded",
                     reason=f"Signature '{matched_sig.name}' exclude",
-                    signature_name=matched_sig.name
+                    signature_name=matched_sig.name,
                 )
-            
+
             # 4. File Content Processing
             # Note: lines retain their original line endings (LF or CRLF)
             encoding, newline_char, lines = self._read_file_content(file_path)
-            
+
             # Determine where the header should live (after shebangs/cookies)
             target_index = self._calculate_header_index(lines)
-            
+
             # 5. Get Header Decision
             canonical_header = f"{matched_sig.comment_prefix} {relpath}"
-            
+
             decision = self._decide_header_action(
-                lines,
-                target_index,
-                matched_sig,
-                canonical_header
+                lines, target_index, matched_sig, canonical_header
             )
-            
+
             # 6. Act on Decision
             if decision.action == "skip":
                 return FileOutcome(
-                    path=relpath, 
+                    path=relpath,
                     action="skipped_correct",
-                    signature_name=matched_sig.name
+                    signature_name=matched_sig.name,
                 )
 
             # It's an "insert" or "update"
-            outcome_action = (
-                "inserted" if decision.action == "insert" else "updated"
-            )
-            
+            outcome_action = "inserted" if decision.action == "insert" else "updated"
+
             if self._dry_run:
                 return FileOutcome(
-                    path=relpath, 
-                    action=outcome_action, 
+                    path=relpath,
+                    action=outcome_action,
                     signature_name=matched_sig.name,
-                    reason="Dry run"
+                    reason="Dry run",
                 )
-            
+
             # 7. Write Changes (Not a dry run)
-            self._write_file_content(
-                file_path, lines, decision, encoding, newline_char
-            )
-            
+            self._write_file_content(file_path, lines, decision, encoding, newline_char)
+
             return FileOutcome(
-                path=relpath, 
-                action=outcome_action, 
-                signature_name=matched_sig.name
+                path=relpath, action=outcome_action, signature_name=matched_sig.name
             )
 
         except Exception as e:
             return FileOutcome(
-                path=relpath, 
-                action="error", 
+                path=relpath,
+                action="error",
                 reason=str(e),
-                signature_name=getattr(matched_sig, 'name', None)
+                signature_name=getattr(matched_sig, "name", None),
             )
 
     def _matches_signature(self, relpath: str, sig: Signature) -> bool:
@@ -542,17 +546,17 @@ class PathHeaderAnnotator:
         # 1. Must end with required_suffix
         if not relpath.endswith(sig.required_suffix):
             return False
-        
+
         # 2. Check extensions (if provided)
         if sig.extensions:
             if not any(relpath.endswith(ext) for ext in sig.extensions):
                 return False
-        
+
         # 3. Check globs (if provided)
         if sig.globs:
             if not any(fnmatch.fnmatch(relpath, glob) for glob in sig.globs):
                 return False
-        
+
         return True
 
     def _detect_encoding(self, file_path: Path) -> str:
@@ -579,12 +583,12 @@ class PathHeaderAnnotator:
         - newline_char is detected for the purpose of NEW insertions.
         """
         encoding = self._detect_encoding(file_path)
-        
+
         # We assume newline='' so python doesn't translate newlines.
         # This prevents the 'double spacing' bug.
-        with open(file_path, "r", encoding=encoding, newline='') as f:
+        with open(file_path, "r", encoding=encoding, newline="") as f:
             content = f.read()
-            
+
         # Detect dominant newline style for *insertion* purposes.
         # If the file uses CRLF, our inserted header should use CRLF.
         if "\r\n" in content:
@@ -604,7 +608,7 @@ class PathHeaderAnnotator:
         lines: List[str],
         decision: HeaderDecision,
         encoding: str,
-        newline_char: str
+        newline_char: str,
     ):
         """
         Write the modified lines list back to the file.
@@ -617,12 +621,12 @@ class PathHeaderAnnotator:
             lines.insert(decision.line_index, final_text)
         elif decision.action == "update":
             lines[decision.line_index] = final_text
-        
+
         # Since lines have their own endings (keepends=True), we join with empty string.
         content = "".join(lines)
-        
+
         # Write back exactly as is.
-        file_path.write_text(content, encoding=encoding, newline='')
+        file_path.write_text(content, encoding=encoding, newline="")
 
     @classmethod
     def _calculate_header_index(cls, lines: List[str]) -> int:
@@ -645,9 +649,9 @@ class PathHeaderAnnotator:
             line_content = lines[idx]
             # Fast check before regex
             if "coding" in line_content:
-                 if cls.ENCODING_PATTERN.match(line_content):
-                     idx += 1
-                     
+                if cls.ENCODING_PATTERN.match(line_content):
+                    idx += 1
+
         return idx
 
     @staticmethod
@@ -658,25 +662,20 @@ class PathHeaderAnnotator:
 
     @staticmethod
     def _decide_header_action(
-        lines: List[str],
-        target_index: int,
-        sig: Signature,
-        canonical_header: str
+        lines: List[str], target_index: int, sig: Signature, canonical_header: str
     ) -> HeaderDecision:
         """
         Decide whether to INSERT or OVERWRITE based on the content at target_index.
         """
-        
+
         # If the target index is beyond the end of file (e.g. empty file), insert.
         if target_index >= len(lines):
             return HeaderDecision(
-                action="insert",
-                text=canonical_header,
-                line_index=target_index
+                action="insert", text=canonical_header, line_index=target_index
             )
 
         candidate_line = lines[target_index]
-        
+
         # We must strip the line endings to check against the regex/canonical header
         candidate_stripped = candidate_line.rstrip("\r\n")
 
@@ -686,26 +685,23 @@ class PathHeaderAnnotator:
             if candidate_stripped == canonical_header:
                 return HeaderDecision(
                     action="skip",
-                    text=canonical_header, # Not used in skip
-                    line_index=target_index
+                    text=canonical_header,  # Not used in skip
+                    line_index=target_index,
                 )
             else:
                 # It's a header, but wrong path
                 return HeaderDecision(
-                    action="update",
-                    text=canonical_header,
-                    line_index=target_index
+                    action="update", text=canonical_header, line_index=target_index
                 )
         else:
             # It's not a header (code, blank line, docstring, etc.)
             return HeaderDecision(
-                action="insert",
-                text=canonical_header,
-                line_index=target_index
+                action="insert", text=canonical_header, line_index=target_index
             )
 
 
 # --- CLI Entrypoint ---
+
 
 def main():
     """Command-line interface entrypoint."""
@@ -721,75 +717,70 @@ Example:
     --exclude "**/.venv/**" \\
     --dry-run \\
     --print-summary
-"""
+""",
     )
-    
+
     # Required args
     parser.add_argument(
-        "--root", 
-        type=str, 
-        required=True,
-        help="Top-level directory to process."
+        "--root", type=str, required=True, help="Top-level directory to process."
     )
     parser.add_argument(
-        "--config", 
-        type=str, 
+        "--config",
+        type=str,
         required=True,
-        help="JSON or JSONC configuration file defining signatures."
+        help="JSON or JSONC configuration file defining signatures.",
     )
-    
+
     # Optional args
     parser.add_argument(
         "--exclude",
         action="append",
         dest="excludes",
-        help="Paths or globs to omit (relative to --root). Repeatable."
+        help="Paths or globs to omit (relative to --root). Repeatable.",
     )
     parser.add_argument(
         "--signature",
         action="append",
         dest="enabled_signature_names",
-        help="Limit processing to one or more signature names. Repeatable."
+        help="Limit processing to one or more signature names. Repeatable.",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Report what would change; do not write to any files."
+        help="Report what would change; do not write to any files.",
     )
     parser.add_argument(
         "--fail-on-change",
         action="store_true",
-        help="Exit non-zero if any modifications would be/were made."
+        help="Exit non-zero if any modifications would be/were made.",
     )
     parser.add_argument(
         "--print-summary",
         action="store_true",
-        help="Print a final counts table at the end of the run."
+        help="Print a final counts table at the end of the run.",
     )
     parser.add_argument(
-        "-j", "--concurrency",
+        "-j",
+        "--concurrency",
         type=int,
-        help="Optional parallelism (default: system CPU count)."
+        help="Optional parallelism (default: system CPU count).",
     )
-    
+
     # Output control
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
-        help="Emit per-file decisions and reasons (DEBUG level)."
+        help="Emit per-file decisions and reasons (DEBUG level).",
     )
     output_group.add_argument(
-        "-q", "--quiet",
-        action="store_true",
-        help="Suppress non-errors (ERROR level)."
+        "-q", "--quiet", action="store_true", help="Suppress non-errors (ERROR level)."
     )
     parser.add_argument(
-        "--no-color",
-        action="store_true",
-        help="Disable ANSI color codes in output."
+        "--no-color", action="store_true", help="Disable ANSI color codes in output."
     )
-    
+
     args = parser.parse_args()
 
     # 1. Set up logging level
@@ -799,13 +790,13 @@ Example:
         log_level = logging.DEBUG
     else:
         log_level = logging.INFO
-        
+
     logging.basicConfig(
         level=log_level,
-        format="%(message)s", # Handled by ConsoleManager
-        handlers=[logging.StreamHandler(sys.stderr)] # Log to stderr
+        format="%(message)s",  # Handled by ConsoleManager
+        handlers=[logging.StreamHandler(sys.stderr)],  # Log to stderr
     )
-    
+
     console = ConsoleManager(level=log_level, no_color=args.no_color)
 
     # 2. Run the annotator
@@ -819,28 +810,26 @@ Example:
             dry_run=args.dry_run,
             concurrency=args.concurrency,
         )
-        
+
         report = annotator.run()
 
         # 3. Print summary if requested
         if args.print_summary:
             console.print_summary(report)
-        
+
         # 4. Determine exit code
         if report.files_with_errors > 0:
-            console.error(
-                f"Run finished with {report.files_with_errors} error(s)."
-            )
+            console.error(f"Run finished with {report.files_with_errors} error(s).")
             sys.exit(2)
-            
+
         if args.fail_on_change and report.total_changes > 0:
             console.warning(
                 f"Exiting with code 3: --fail-on-change was set and "
                 f"{report.total_changes} change(s) were detected."
             )
             sys.exit(3)
-            
-        sys.exit(0) # Success
+
+        sys.exit(0)  # Success
 
     except (FileNotFoundError, ValueError, TypeError) as e:
         console.critical(f"Configuration or Usage Error: {e}")
