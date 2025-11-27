@@ -34,9 +34,8 @@ Homepage = "https://github.com/braxton-bell/path-annotate"
 
 ### console entry points ###
 [project.scripts]
-# getgrid = "jorie.rcmap.rpa.tools.getgrid:main"
-# getscene = "jorie.rcmap.rpa.tools.getscene:main"
-# getbox = "jorie.rcmap.rpa.tools.getbox:main"
+annotate = "codetools.annotate.path_annotate:main"
+inventory = "codetools.inventory.py_api_inventory:main"
 
 ### tool configurations ###
 [tool.setuptools]
