@@ -1,3 +1,4 @@
+# path_annotate.py
 """
 path-annotate: A tool to add/update a first-line path comment in source files.
 
@@ -111,7 +112,6 @@ class HeaderDecision(NamedTuple):
     action: HeaderAction
     text: str
     line_index: int
-    existing_line_count: int
 
 
 @dataclass(slots=True, frozen=True)
@@ -199,7 +199,7 @@ class ConsoleManager:
 
     def error(self, msg: str):
         self._log(msg, logging.ERROR, Fore.RED)
-    
+     
     def critical(self, msg: str):
         self._log(msg, logging.CRITICAL, Fore.RED + Style.BRIGHT)
 
@@ -281,6 +281,12 @@ class PathHeaderAnnotator:
     # Use ClassVar for defaults that don't change per instance
     DEFAULT_ENCODING: ClassVar[str] = "utf-8"
     FALLBACK_ENCODING: ClassVar[str] = "latin-1"
+    
+    # Regex to detect encoding cookies (PEP 263 style)
+    # Checks for: # ... coding=utf-8 ...
+    ENCODING_PATTERN: ClassVar[re.Pattern] = re.compile(
+        r"^[ \t\f]*#.*?coding[:=][ \t]*([-_.a-zA-Z0-9]+)"
+    )
 
     def __init__(
         self,
@@ -475,16 +481,18 @@ class PathHeaderAnnotator:
                 )
             
             # 4. File Content Processing
+            # Note: lines retain their original line endings (LF or CRLF)
             encoding, newline_char, lines = self._read_file_content(file_path)
             
-            first_nonblank_line, first_nonblank_idx = self._find_first_nonblank(lines)
+            # Determine where the header should live (after shebangs/cookies)
+            target_index = self._calculate_header_index(lines)
             
             # 5. Get Header Decision
             canonical_header = f"{matched_sig.comment_prefix} {relpath}"
             
             decision = self._decide_header_action(
-                first_nonblank_line,
-                first_nonblank_idx,
+                lines,
+                target_index,
                 matched_sig,
                 canonical_header
             )
@@ -566,32 +574,28 @@ class PathHeaderAnnotator:
 
     def _read_file_content(self, file_path: Path) -> Tuple[str, str, List[str]]:
         """
-        Read file, detecting encoding and newlines.
-        Returns (encoding, newline_char, list_of_lines).
+        Read file using binary-safe text mode.
+        - keepends=True ensures we preserve original LF or CRLF per line.
+        - newline_char is detected for the purpose of NEW insertions.
         """
         encoding = self._detect_encoding(file_path)
         
+        # We assume newline='' so python doesn't translate newlines.
+        # This prevents the 'double spacing' bug.
         with open(file_path, "r", encoding=encoding, newline='') as f:
             content = f.read()
             
-            # f.newlines is the detected newline.
-            # It can be a tuple if mixed, or None if no newlines.
-            newlines = f.newlines
-            if isinstance(newlines, tuple):
-                self._logger.warning(
-                    f"Mixed newlines in {file_path}; "
-                    f"preserving first detected: {newlines[0]!r}"
-                )
-                newline_char = newlines[0]
-            elif newlines is None:
-                # No newlines detected (e.g., empty file or single line no EOL)
-                # Default to system lineterminator
-                newline_char = os.linesep
-            else:
-                newline_char = newlines  # e.g., "\n" or "\r\n"
-        
-        # splitlines() correctly handles all newline types
-        lines = content.splitlines() 
+        # Detect dominant newline style for *insertion* purposes.
+        # If the file uses CRLF, our inserted header should use CRLF.
+        if "\r\n" in content:
+            newline_char = "\r\n"
+        elif "\n" in content:
+            newline_char = "\n"
+        else:
+            newline_char = os.linesep
+
+        # splitlines(keepends=True) preserves the specific ending of every line.
+        lines = content.splitlines(keepends=True)
         return encoding, newline_char, lines
 
     def _write_file_content(
@@ -602,29 +606,49 @@ class PathHeaderAnnotator:
         encoding: str,
         newline_char: str
     ):
-        """Write the modified lines list back to the file."""
-        if decision.action == "insert":
-            lines.insert(decision.line_index, decision.text)
-        elif decision.action == "update":
-            lines[decision.line_index] = decision.text
-        
-        # Re-join with the *detected* newline
-        content = newline_char.join(lines)
-        
-        # Add a trailing newline if the list is not empty
-        # (splitlines() drops the final one)
-        if lines:
-            content += newline_char
-            
-        file_path.write_text(content, encoding=encoding, newline=newline_char)
+        """
+        Write the modified lines list back to the file.
+        Uses newline='' to ensure we write exact bytes without translation.
+        """
+        # Ensure the new/updated text has the correct line ending attached
+        final_text = decision.text + newline_char
 
-    @staticmethod
-    def _find_first_nonblank(lines: List[str]) -> Tuple[Optional[str], int]:
-        """Find the first non-blank line and its index."""
-        for i, line in enumerate(lines):
-            if line.strip():
-                return line, i
-        return None, 0 # No non-blank lines, target index is 0
+        if decision.action == "insert":
+            lines.insert(decision.line_index, final_text)
+        elif decision.action == "update":
+            lines[decision.line_index] = final_text
+        
+        # Since lines have their own endings (keepends=True), we join with empty string.
+        content = "".join(lines)
+        
+        # Write back exactly as is.
+        file_path.write_text(content, encoding=encoding, newline='')
+
+    @classmethod
+    def _calculate_header_index(cls, lines: List[str]) -> int:
+        """
+        Determine the correct line index for the header.
+        Skips:
+          1. Shebang (starts with #!)
+          2. Python encoding cookies (e.g. # -*- coding: utf-8 -*-)
+        """
+        idx = 0
+        limit = len(lines)
+
+        # 1. Skip Shebang (only valid on the very first line)
+        if idx < limit and lines[idx].startswith("#!"):
+            idx += 1
+
+        # 2. Skip Encoding Cookie (valid on line 1 or 2, 0-indexed)
+        # We only check the current index if it is still within the first 2 lines.
+        if idx < limit and idx < 2:
+            line_content = lines[idx]
+            # Fast check before regex
+            if "coding" in line_content:
+                 if cls.ENCODING_PATTERN.match(line_content):
+                     idx += 1
+                     
+        return idx
 
     @staticmethod
     def normalize_relpath(root: Path, file_path: Path) -> str:
@@ -634,50 +658,50 @@ class PathHeaderAnnotator:
 
     @staticmethod
     def _decide_header_action(
-        first_nonblank_line: Optional[str],
-        first_nonblank_idx: int,
+        lines: List[str],
+        target_index: int,
         sig: Signature,
         canonical_header: str
     ) -> HeaderDecision:
         """
-        Decide whether to INSERT or OVERWRITE and build the exact line text.
+        Decide whether to INSERT or OVERWRITE based on the content at target_index.
         """
         
-        if first_nonblank_line is None:
-            # File is empty or all whitespace
+        # If the target index is beyond the end of file (e.g. empty file), insert.
+        if target_index >= len(lines):
             return HeaderDecision(
                 action="insert",
                 text=canonical_header,
-                line_index=0, # Insert at the very top
-                existing_line_count=0
+                line_index=target_index
             )
 
+        candidate_line = lines[target_index]
+        
+        # We must strip the line endings to check against the regex/canonical header
+        candidate_stripped = candidate_line.rstrip("\r\n")
+
         # Check if the line matches the *pattern*
-        if sig.detection_pattern.match(first_nonblank_line):
+        if sig.detection_pattern.match(candidate_stripped):
             # It's a header. Is it the *correct* header?
-            if first_nonblank_line == canonical_header:
-                # Already perfect
+            if candidate_stripped == canonical_header:
                 return HeaderDecision(
                     action="skip",
-                    text=canonical_header,
-                    line_index=first_nonblank_idx,
-                    existing_line_count=1
+                    text=canonical_header, # Not used in skip
+                    line_index=target_index
                 )
             else:
-                # It's a header, but wrong path (e.g., file moved)
+                # It's a header, but wrong path
                 return HeaderDecision(
                     action="update",
                     text=canonical_header,
-                    line_index=first_nonblank_idx,
-                    existing_line_count=1
+                    line_index=target_index
                 )
         else:
-            # It's a non-blank line, but not our header (e.g., `import os`)
+            # It's not a header (code, blank line, docstring, etc.)
             return HeaderDecision(
                 action="insert",
                 text=canonical_header,
-                line_index=first_nonblank_idx, # Insert *before* this line
-                existing_line_count=0
+                line_index=target_index
             )
 
 
