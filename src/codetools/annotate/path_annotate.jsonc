@@ -34,6 +34,19 @@
       ]
     },
     {
+      "name": "csharp",
+      "enabled": true,
+      "comment_prefix": "//",
+      "required_suffix": ".cs",
+      "globs": ["**/*.cs"],
+      "exclude": [
+        "**/bin/**",       // Output directories
+        "**/obj/**",       // Intermediate build files
+        "**/.vs/**",       // Visual Studio temporary data
+        "**/Migrations/**" // Auto-generated Entity Framework files
+      ]
+    },
+    {
       "name": "json",
       "enabled": true,
       "comment_prefix": "//",
