@@ -1,13 +1,21 @@
+
 # codetools
 
 **codetools** is a toolkit for generating and managing code documentation and maintenance. It provides a suite of utilities designed to be CI/CD friendly, idempotent, and highly configurable.
 
+It ships as a single **commander-style CLI** (`codetools`) with sub-commands under:
+
+- `codetools run <tool> [tool args...]`
+
+This keeps your console entry points stable (one script) while still letting each tool keep its own argparse flags and help output.
+
 ## 🧰 The Toolkit
 
-| Tool | CLI Command | Description |
+| Tool | Commander Command | Description |
 | :--- | :--- | :--- |
-| **Path Annotator** | `annotate` | **Recursive File Header Manager.**<br>Automatically inserts or updates canonical file path comments (e.g., `# src/utils.py`) at the top of source files. |
-| **API Inventory** | `inventory` | **Static API Surface Extractor.**<br>Uses AST analysis to traverse a Python repository and generate a structured YAML inventory of all packages, modules, classes, and methods. |
+| **Path Annotator** | `codetools run annotate` | **Recursive File Header Manager.**<br>Automatically inserts or updates canonical file path comments (e.g., `# src/utils.py`) at the top of source files. |
+| **API Inventory** | `codetools run inventory` | **Static API Surface Extractor.**<br>Uses AST analysis to traverse a Python repository and generate a structured YAML inventory of all packages, modules, classes, and methods. |
+| **Repo → Markdown** | `codetools run markdown` | **LLM Context Packager.**<br>Converts a repository into a single, well-structured Markdown document (tree + file contents) optimized for pasting into LLMs. Supports GUI/TUI/CLI-style selection depending on the tool implementation. |
 
 -----
 
@@ -15,57 +23,93 @@
 
 This project requires **Python 3.12+**.
 
-Since the project is configured as a package, you can install it directly from the source. This will install dependencies and register the `annotate` and `inventory` commands on your path.
+This project is configured as a package and uses **uv** for dependency management. Syncing will install dependencies and make the `codetools` command available in the environment.
 
-**User Installation**
-
-```bash
-pip install .
-```
-
-**Developer Installation (Editable mode with dev tools)**
+**User Installation / Runtime deps**
 
 ```bash
-pip install -e ".[dev]"
+uv sync
 ```
 
------
+**Developer Installation (includes dev group)**
+
+```bash
+uv sync --all-groups
+```
+
+---
 
 ## 🚀 Quick Start
 
-Once installed, you can run the tools directly from your terminal.
+Once installed, run tools through the commander.
 
-### 1\. Annotate (`path-annotate`)
+### 1. Annotate (Path Annotator)
 
 Ensure every file in your project knows where it lives.
 
 ```bash
 # Preview changes (Dry Run)
-annotate --root . --config path-annotate.jsonc --dry-run
+codetools run annotate --root . --config path-annotate.jsonc --dry-run
 
 # Apply changes (Add headers to Python, JS, SQL, etc.)
-annotate --root . --config path-annotate.jsonc
+codetools run annotate --root . --config path-annotate.jsonc
 ```
 
-### 2\. Inventory (`py-api-inventory`)
+### 2. Inventory (API Inventory)
 
 Generate a snapshot of your project's public API.
 
 ```bash
 # Generate a YAML report of the public API surface
-inventory --root ./src --output api_dump.yaml --public-only
+codetools run inventory --root ./src --output api_dump.yaml --public-only
 
 # Check statistics of the codebase (Summary only)
-inventory --root ./src --print-summary --dry-run
+codetools run inventory --root ./src --print-summary --dry-run
 ```
 
------
+### 3. Markdown (Repo → Markdown)
+
+Generate a single Markdown artifact containing a directory tree + selected file contents, intended for LLM prompts and reviews.
+
+```bash
+# Run the markdown tool (mode/flags are owned by the markdown tool itself)
+codetools run markdown -h
+```
+
+#### `codetools run markdown ...` context
+
+* `codetools run markdown` **passes all flags through** to the markdown tool’s own `argparse` (because the commander dispatch uses `parse_known_args()` and patches `sys.argv` for the downstream module).
+* That means help/usage is always the tool’s help:
+
+```bash
+codetools run markdown -h
+```
+
+* And you run the tool the same way you would if it were standalone—just with the `codetools run markdown` prefix.
+
+Examples (exact flags depend on your markdown tool implementation):
+
+```bash
+# Example: headless dump into a single artifact (if supported by the tool)
+codetools run markdown /path/to/repo -o dump.md --cli
+
+# Example: terminal UI mode (if supported by the tool)
+codetools run markdown --tui
+
+# Example: GUI mode default (if supported by the tool)
+codetools run markdown
+```
+
+---
 
 ## 🤝 Contributing
 
 This project uses `pre-commit` and `pytest` for quality assurance.
 
 ```bash
+# Sync including dev tooling (pre-commit, pytest, linters, etc.)
+uv sync --all-groups
+
 # Install pre-commit hooks
 pre-commit install
 
@@ -73,4 +117,8 @@ pre-commit install
 pytest
 ```
 
-For detailed configuration options regarding specific tools, please refer to the sub-readmes in `src/codetools/annotate` and `src/codetools/inventory`.
+For detailed configuration options regarding specific tools, please refer to the sub-readmes in:
+
+* `src/codetools/annotate`
+* `src/codetools/inventory`
+* `src/codetools/markdown`
