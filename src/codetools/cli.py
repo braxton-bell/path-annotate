@@ -84,9 +84,9 @@ def main():
             run_python_tool(py_api_inventory, extra_args)
 
         elif args.tool == "markdown":
-            from codetools.markdown import to_markdown
+            from codetools.markdown import repo_to_markdown
 
-            run_python_tool(to_markdown, extra_args)
+            run_python_tool(repo_to_markdown, extra_args)
 
 
 if __name__ == "__main__":

@@ -3,13 +3,13 @@
 repo_to_markdown.py
 
 A tool to dump code files into a single Markdown document.
-Supports:
-  1. GUI Mode (Default): Uses Tkinter.
-  2. TUI Mode (--tui): Uses Curses (terminal UI).
-  3. CLI Mode: Non-interactive arguments.
+Includes a GUI to visualize the directory tree and select specific files/folders.
+Now includes an automatic "Project Structure" tree diagram in the output.
 
 Usage:
-  python repo_to_markdown.py [root_dir] [-o output.md] [--tui]
+  GUI Mode: python repo_to_markdown.py
+  TUI Mode: python repo_to_markdown.py --tui
+  CLI Mode: python repo_to_markdown.py /path/to/repo -o out.md
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ MAX_FILE_BYTES = 2_000_000
 
 
 class RepoProcessor:
-    """Handles file scanning, reading, and markdown generation logic."""
+    """Handles file scanning, reading, tree generation, and markdown assembly."""
 
     @staticmethod
     def should_skip_dir(dirname: str) -> bool:
@@ -118,9 +118,7 @@ class RepoProcessor:
 
     @staticmethod
     def read_text_safely(path: Path) -> str:
-        """
-        Reads file content and normalizes line endings to avoid double-spacing on Windows.
-        """
+        """Reads file content and normalizes line endings."""
         try:
             size = path.stat().st_size
             if size > MAX_FILE_BYTES:
@@ -170,17 +168,73 @@ class RepoProcessor:
         }
         return mapping.get(ext, "")
 
+    # --- Tree Generation Logic ---
+
+    @staticmethod
+    def _build_tree_structure(paths: List[Path], root: Path) -> Dict:
+        """Converts a list of paths into a nested dictionary structure."""
+        tree = {}
+        for path in paths:
+            parts = path.relative_to(root).parts
+            current = tree
+            for part in parts:
+                current = current.setdefault(part, {})
+        return tree
+
+    @staticmethod
+    def _render_tree(tree: Dict, prefix: str = "") -> List[str]:
+        """Recursively renders the dictionary tree into lines of text."""
+        lines = []
+        keys = sorted(tree.keys())  # Sort for consistent order
+        for i, key in enumerate(keys):
+            is_last = i == len(keys) - 1
+            connector = "└── " if is_last else "├── "
+            lines.append(f"{prefix}{connector}{key}")
+
+            # Prepare prefix for children
+            extension = "    " if is_last else "│   "
+
+            # If the dict is not empty, it means this key is a directory with children
+            if tree[key]:
+                lines.extend(RepoProcessor._render_tree(tree[key], prefix + extension))
+        return lines
+
+    @staticmethod
+    def generate_tree_diagram(files: List[Path], root: Path) -> str:
+        """Generates a string representation of the file tree."""
+        if not files:
+            return ""
+        tree_structure = RepoProcessor._build_tree_structure(files, root)
+        rendered_lines = ["."] + RepoProcessor._render_tree(tree_structure)
+        return "\n".join(rendered_lines)
+
+    # --- Markdown Generation ---
+
     @staticmethod
     def generate_markdown(files: List[Path], root: Path) -> str:
+        # Sort by path string for readability
+        files.sort(key=lambda p: str(p))
+
+        # 1. Header
         lines = [
             f"# Repository Dump: {root.name}",
             f"- Root: `{root.resolve()}`",
-            "---",
+            f"- Files included: {len(files)}",
             "",
         ]
 
-        # Sort by path string for readability
-        files.sort(key=lambda p: str(p))
+        # 2. Project Structure (Tree Diagram)
+        lines.append("## Project Structure")
+        lines.append("```text")
+        lines.append(RepoProcessor.generate_tree_diagram(files, root))
+        lines.append("```")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+        # 3. File Contents
+        lines.append("## File Contents")
+        lines.append("")
 
         for path in files:
             rel = path.relative_to(root).as_posix()
@@ -198,7 +252,7 @@ class RepoProcessor:
         return "\n".join(lines)
 
 
-# --- Data Structure for Tree Views ---
+# --- Data Structure for UI ---
 
 
 class TreeNode:
@@ -262,7 +316,7 @@ class GuiApp:
         self.root.title("Repo to Markdown")
         self.root.geometry("600x600")
 
-        self.tree_map: Dict[str, TreeNode] = {}  # GUI ID -> TreeNode
+        self.tree_map: Dict[str, TreeNode] = {}
         self.start_path = start_path
 
         self._setup_ui()
@@ -380,7 +434,7 @@ class TuiApp:
 
         recurse(self.root_node, 0)
 
-    def _main_loop(self, stdscr):  # noqa: ignore
+    def _main_loop(self, stdscr):  # noqa : ignore
         curses.curs_set(0)
         stdscr.nodelay(False)
         stdscr.keypad(True)
@@ -427,11 +481,11 @@ class TuiApp:
                     icon = "  "
 
                 line_str = f"{'  '*depth}{icon}{check_mark} {node.name}"
-
-                style = curses.A_NORMAL
-                if list_idx == self.selected_idx:
-                    style = curses.color_pair(1)
-
+                style = (
+                    curses.color_pair(1)
+                    if list_idx == self.selected_idx
+                    else curses.A_NORMAL
+                )
                 stdscr.addstr(row, 0, line_str[: w - 1], style)
 
             stdscr.refresh()
