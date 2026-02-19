@@ -38,9 +38,31 @@ class TreeNode:
         return selected
 
     @staticmethod
-    def build_tree(root_path: Path, service: RepoService) -> TreeNode:
-        """Factory method to build the tree using service rules."""
+    def build_tree(  # noqa : ignore
+        root_path: Path,
+        service: RepoService,
+        project_root: Path | None = None,
+        selected_paths: set[str] | None = None,
+    ) -> TreeNode:
+        """
+        Factory method to build the tree using service rules.
+
+        :param root_path: The current directory being processed.
+        :param service: The repo service logic.
+        :param project_root: The top-level root of the project (used for relative path matching).
+        :param selected_paths: A set of relative path strings to check. If None, check all.
+        """
+        # On first call, project_root is typically the root_path
+        if project_root is None:
+            project_root = root_path
+
         node = TreeNode(root_path, True)
+
+        # If we are in "restore state" mode (selected_paths is not None),
+        # default directory checked state to False. Visual expansion is left default.
+        if selected_paths is not None:
+            node.checked = False
+
         try:
             items = sorted(
                 root_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())
@@ -49,7 +71,9 @@ class TreeNode:
                 if item.is_dir():
                     if service.should_skip_dir(item.name):
                         continue
-                    child_node = TreeNode.build_tree(item, service)
+                    child_node = TreeNode.build_tree(
+                        item, service, project_root, selected_paths
+                    )
                     child_node.parent = node
                     # Only add dir if it has content
                     if child_node.children:
@@ -57,6 +81,18 @@ class TreeNode:
                 else:
                     if service.should_include_file(item):
                         child_node = TreeNode(item, False, parent=node)
+
+                        # Apply selection state logic
+                        if selected_paths is not None:
+                            try:
+                                rel_path = item.relative_to(project_root).as_posix()
+                                child_node.checked = rel_path in selected_paths
+                            except ValueError:
+                                child_node.checked = False
+                        else:
+                            # Default behavior: All checked
+                            child_node.checked = True
+
                         node.children.append(child_node)
         except PermissionError:
             pass

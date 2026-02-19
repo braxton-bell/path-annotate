@@ -28,16 +28,49 @@ from codetools.shared.ui.winx_tui_app import WinxTuiApp
 class RepoCli:
     """Headless Command Line Interface."""
 
-    def __init__(self, *, service: RepoService, root: Path, output: str) -> None:
+    def __init__(
+        self,
+        *,
+        service: RepoService,
+        root: Path,
+        output: str,
+        force_all: bool = False,
+    ) -> None:
         self._service = service
         self._root = root
         self._output = output
+        self._force_all = force_all
 
     def run(self) -> None:
-        files = self._service.scan_directory(self._root)
-        md = self._service.generate_markdown(files, self._root)
+        # 1. Scan for all valid files
+        all_files = self._service.scan_directory(self._root)
+
+        # 2. Determine selection logic
+        final_files = []
+        loaded_state = None
+
+        if not self._force_all:
+            loaded_state = self._service.load_selection_state(self._root)
+
+        if loaded_state is not None:
+            print("Using previous file selection (use --force-all to ignore)...")
+            # Filter all_files against loaded_state
+            for f in all_files:
+                try:
+                    rel = f.relative_to(self._root).as_posix()
+                    if rel in loaded_state:
+                        final_files.append(f)
+                except ValueError:
+                    continue
+        else:
+            if not self._force_all:
+                print("No previous selection found. Defaulting to all files.")
+            final_files = all_files
+
+        # 3. Generate
+        md = self._service.generate_markdown(final_files, self._root)
         Path(self._output).write_text(md, encoding="utf-8")
-        print(f"Generated {self._output} ({len(files)} files)")
+        print(f"Generated {self._output} ({len(final_files)} files)")
 
 
 class RepoGui(WinxGuiApp):
@@ -79,8 +112,13 @@ class RepoGui(WinxGuiApp):
             self._tree.delete(item)
         self._tree_map.clear()
 
+        # Load persistence state if available
+        selected_paths = self._service.load_selection_state(path)
+
         # Use Factory to build tree via service rules
-        self._root_node = TreeNode.build_tree(path, self._service)
+        self._root_node = TreeNode.build_tree(
+            path, self._service, project_root=path, selected_paths=selected_paths
+        )
         self._insert_node("", self._root_node)
 
     def _insert_node(self, parent_id: str, node: TreeNode) -> None:
@@ -125,6 +163,10 @@ class RepoGui(WinxGuiApp):
         )
         if out:
             try:
+                # Save State First
+                self._service.save_selection_state(self._root_node.path, files)
+
+                # Generate
                 md = self._service.generate_markdown(files, self._root_node.path)
                 Path(out).write_text(md, encoding="utf-8")
                 messagebox.showinfo("Done", f"Saved to {out}")
@@ -139,7 +181,13 @@ class RepoTui(WinxTuiApp):
         super().__init__()
         self._service = service
         self._root_path = root_path
-        self._root_node = TreeNode.build_tree(root_path, service)
+
+        # Load state
+        selected_paths = self._service.load_selection_state(root_path)
+
+        self._root_node = TreeNode.build_tree(
+            root_path, service, project_root=root_path, selected_paths=selected_paths
+        )
 
         # State
         self._visible_nodes: list[tuple[TreeNode, int]] = []
@@ -236,6 +284,9 @@ class RepoTui(WinxTuiApp):
         out_name = out_bytes.decode("utf-8").strip() or "repo_dump.md"
 
         try:
+            # Save State First
+            self._service.save_selection_state(self._root_path, files)
+
             md = self._service.generate_markdown(files, self._root_path)
             Path(out_name).write_text(md, encoding="utf-8")
         except Exception as e:
@@ -254,6 +305,11 @@ def main() -> None:
     parser.add_argument("-o", "--output", help="Output file (CLI mode only)")
     parser.add_argument("--tui", action="store_true", help="Use Terminal UI")
     parser.add_argument("--cli", action="store_true", help="Run headlessly")
+    parser.add_argument(
+        "--force-all",
+        action="store_true",
+        help="Ignore previous selections and include all files (CLI only)",
+    )
 
     args = parser.parse_args()
     root_path = Path(args.root).resolve()
@@ -268,7 +324,12 @@ def main() -> None:
     # Mode Selection
     if args.cli or (args.output and not args.tui):
         out_file = args.output or "repo_dump.md"
-        app = RepoCli(service=service, root=root_path, output=out_file)
+        app = RepoCli(
+            service=service,
+            root=root_path,
+            output=out_file,
+            force_all=args.force_all,
+        )
         app.run()
         return
 

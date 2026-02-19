@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -10,8 +11,10 @@ from codetools.shared.repo.repo_config import RepoConfig
 class RepoService:
     """
     Core Logic Service.
-    Handles file scanning, content reading, and Markdown generation.
+    Handles file scanning, content reading, Markdown generation, and state persistence.
     """
+
+    STATE_FILE_NAME = ".repo_selection.json"
 
     def __init__(self, *, app_config: dict[str, Any] | None = None) -> None:
         self._config = app_config or {}
@@ -157,3 +160,43 @@ class RepoService:
             lines.append("")
 
         return "\n".join(lines)
+
+    # --- Persistence Methods ---
+
+    def load_selection_state(self, root: Path) -> set[str] | None:
+        """
+        Loads the set of selected relative paths from the state file.
+        Returns None if no state file exists.
+        """
+        state_path = root / self.STATE_FILE_NAME
+        if not state_path.exists():
+            return None
+
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Expecting format: {"selected": ["src/main.py", ...]}
+                return set(data.get("selected", []))
+        except Exception:
+            # If corruption or read error occurs, treat as no state
+            return None
+
+    def save_selection_state(self, root: Path, selected_files: list[Path]) -> None:
+        """Saves the list of selected files (as relative paths) to the state file."""
+        state_path = root / self.STATE_FILE_NAME
+
+        # Convert absolute paths to relative POSIX strings for portability
+        rel_paths = []
+        for p in selected_files:
+            try:
+                rel_paths.append(p.relative_to(root).as_posix())
+            except ValueError:
+                continue
+
+        data = {"selected": sorted(rel_paths)}
+
+        try:
+            with open(state_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Failed to save selection state: {e}")
