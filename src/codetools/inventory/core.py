@@ -3,7 +3,6 @@ from __future__ import annotations
 import ast
 import concurrent.futures
 import datetime
-import logging
 import tomllib
 from pathlib import Path
 from typing import Any, Literal
@@ -27,11 +26,9 @@ class InventoryService:
         *,
         app_config: dict[str, Any],
         root_path: Path,
-        logger: logging.Logger | None = None,
     ) -> None:
         self._app_config = app_config
         self._root = root_path
-        self._logger = logger or logging.getLogger(__name__)
 
         # Dependencies
         self._path_matcher = self._init_path_matcher()
@@ -41,7 +38,7 @@ class InventoryService:
         """
         Executes the full inventory scan.
         """
-        self._logger.info(f"Starting inventory scan of '{self._root}'")
+        print(f"Starting inventory scan of '{self._root}'")
         start_time = datetime.datetime.now(datetime.timezone.utc)
 
         pkg_name, pkg_version = self._read_pyproject(
@@ -68,26 +65,18 @@ class InventoryService:
 
         return self._build_report(start_time, stats, packages, pkg_name, pkg_version)
 
-    def write_yaml(
-        self, report: models.InventoryReport, path: str | None, to_stdout: bool
-    ) -> None:
+    def write_yaml(self, report: models.InventoryReport, path: str) -> None:
         """
-        Writes the report to YAML.
+        Writes the report to a YAML file.
         """
         data = dict(report)
+        out_p = Path(path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
 
-        if to_stdout:
-            import sys
+        with open(out_p, "w", encoding="utf-8") as f:
+            self._yaml_dump_no_alias(data, f)
 
-            try:
-                self._yaml_dump_no_alias(data, sys.stdout)
-            except BrokenPipeError:
-                pass
-        elif path:
-            out_p = Path(path)
-            out_p.parent.mkdir(parents=True, exist_ok=True)
-            with open(out_p, "w", encoding="utf-8") as f:
-                self._yaml_dump_no_alias(data, f)
+        print(f"Inventory written to: {out_p.resolve()}")
 
     # --- Private Helpers ---
 
@@ -97,7 +86,7 @@ class InventoryService:
             try:
                 return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
             except Exception as e:
-                self._logger.warning(f"Invalid exclude patterns: {e}")
+                print(f"WARNING: Invalid exclude patterns: {e}")
         return None
 
     def _init_stats(
@@ -133,7 +122,7 @@ class InventoryService:
                 except ValueError:
                     continue
         except PermissionError as e:
-            self._logger.error(f"Permission denied: {e}")
+            print(f"ERROR: Permission denied: {e}")
 
         return sorted(all_py), excluded
 
@@ -216,7 +205,7 @@ class InventoryService:
                     processed_mods.append(res)
                 else:
                     stats["files_parse_errors"] += 1
-                    self._logger.warning(f"Failed {skeleton['path']}: {res}")
+                    print(f"WARNING: Failed {skeleton['path']}: {res}")
 
             pkg["modules"] = sorted(processed_mods, key=lambda m: m["qname"])
 
@@ -296,7 +285,6 @@ class InventoryService:
 class ModuleParser:
     """
     Worker class for parsing individual modules.
-    Uses static methods to ensure picklability for ProcessPoolExecutor.
     """
 
     @staticmethod
@@ -359,10 +347,7 @@ class ModuleParser:
 
 
 class NodeExtractor:
-    """
-    Helper for AST traversal within the worker process.
-    """
-
+    # (Same as before, no changes needed here)
     def __init__(self, config: dict[str, Any], parent_qname: str) -> None:
         self.config = config
         self.parent_qname = parent_qname

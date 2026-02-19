@@ -9,12 +9,9 @@ This tool is read-only and does not import or execute any of the target code.
 """
 
 import argparse
-import logging
 import sys
 from pathlib import Path
 from typing import Any
-
-from codetools.annotate.path_annotate import ConsoleManager
 
 from .config import ConfigurationManager
 from .core import InventoryService
@@ -31,37 +28,30 @@ class CliInterface:
     def run(self) -> None:
         args = self._parser.parse_args()
 
-        logger = ConsoleManager(
-            level=args.log_level or logging.INFO, no_color=args.no_color
-        )
-
         try:
             config = self._build_config(args)
 
             service = InventoryService(
                 app_config=config,
                 root_path=Path(args.root).resolve(strict=True),
-                logger=logger,
             )
 
             report = service.run_inventory()
 
-            output_path = (
-                None if args.stdout else (args.output_path or "api_signatures.yaml")
-            )
-            service.write_yaml(report, output_path, args.stdout)
+            # Determine output path (Default to 'api_signatures.yaml' if not provided)
+            output_path = args.output_path or "api_signatures.yaml"
+            service.write_yaml(report, output_path)
 
             if args.print_summary:
                 s = report["stats"]
                 print(
-                    f"\nSummary: {s['files_scanned']} scanned, {s['files_parsed_ok']} ok, {s['files_parse_errors']} errors.",
-                    file=sys.stderr,
+                    f"\nSummary: {s['files_scanned']} scanned, {s['files_parsed_ok']} ok, {s['files_parse_errors']} errors."
                 )
 
             sys.exit(2 if report["stats"]["files_parse_errors"] > 0 else 0)
 
         except Exception as e:
-            logger.error(str(e))
+            print(f"Fatal Error: {e}")
             sys.exit(1)
 
     def _build_config(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -96,9 +86,12 @@ class CliInterface:
         parser.add_argument("--pyproject", dest="pyproject_path")
 
         # Output
-        out_g = parser.add_mutually_exclusive_group()
-        out_g.add_argument("-o", "--output", dest="output_path")
-        out_g.add_argument("--stdout", action="store_true")
+        parser.add_argument(
+            "-o",
+            "--output",
+            dest="output_path",
+            help="Output YAML file path (default: api_signatures.yaml)",
+        )
 
         # Toggles
         parser.add_argument("--public-only", action="store_true", default=None)
@@ -127,19 +120,7 @@ class CliInterface:
         )
         parser.add_argument("-j", "--concurrency", type=int)
 
-        # Log
-        log_g = parser.add_mutually_exclusive_group()
-        log_g.add_argument(
-            "-v",
-            "--verbose",
-            action="store_const",
-            dest="log_level",
-            const=logging.DEBUG,
-        )
-        log_g.add_argument(
-            "-q", "--quiet", action="store_const", dest="log_level", const=logging.ERROR
-        )
-        parser.add_argument("--no-color", action="store_true")
+        # Misc
         parser.add_argument("--print-summary", action="store_true")
 
         return parser
