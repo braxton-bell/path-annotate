@@ -1,0 +1,73 @@
+{
+  // -----------------------------------------------------------------------
+  // Configuration: py_api_inventory
+  // Description: Default settings. Override via CLI or --config file.
+  // -----------------------------------------------------------------------
+
+  // --- Inclusion Toggles ---
+
+  // Include only public items (excludes names starting with '_').
+  // Note: __init__ methods are always retained.
+  "public_only": true,
+
+  // Include module-level and class-level constants.
+  "include_constants": false,
+
+  // Include docstrings for modules, classes, and methods.
+  "include_docstrings": true,
+
+  // Explicitly identify classes that subclass 'Enum' (or variants).
+  "include_enums": true,
+
+  // Include module-level functions.
+  "include_functions": true,
+
+  // Apply .strip() to all captured docstrings to remove leading/trailing whitespace.
+  "strip_docstrings": true,
+
+
+  // --- Analysis Strategies ---
+
+  // Defines how packages are identified.
+  // Options:
+  //   "any_dir_with_py" - (Default) Any directory containing .py files.
+  //   "require_init_py" - Only directories containing an __init__.py.
+  "package_mode": "any_dir_with_py",
+
+  // Defines how constants are identified.
+  // Options:
+  //   "no_underscore" - (Default) Any variable without a leading underscore.
+  //   "uppercase"     - Only uppercase variables (e.g., MY_CONSTANT).
+  "constant_visibility": "no_underscore",
+
+
+  // --- Output Formatting ---
+
+  // Prefix all paths in the YAML output with a leading slash (e.g., /src/main.py).
+  "leading_slash_in_paths": true,
+
+
+  // --- Execution Settings ---
+
+  // Number of concurrent workers. Set to 0 for synchronous execution.
+  "concurrency": 0,
+
+
+  // --- Exclusions ---
+
+  // Glob patterns to exclude (relative to the --root).
+  // These are merged with any --exclude patterns provided via CLI.
+  "exclude": [
+    "**/.venv/**",
+    "**/__pycache__/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/node_modules/**",
+    "**/*.egg-info/**",
+    "**/.*",
+    "**/*_test.py",
+    "**/test_*.py",
+    "**/tests/**",
+    "**/*.ipynb"
+  ]
+}
