@@ -1,4 +1,3 @@
-
 # codetools
 
 **codetools** is a toolkit for generating and managing code documentation and maintenance. It provides a suite of utilities designed to be CI/CD friendly, idempotent, and highly configurable.
@@ -9,6 +8,24 @@ It ships as a single **commander-style CLI** (`codetools`) with sub-commands und
 
 This keeps your console entry points stable (one script) while still letting each tool keep its own argparse flags and help output.
 
+## Project Structure
+
+```text
+.
+├── .pre-commit-config.yaml
+├── README.md
+└── src
+    └── codetools
+        ├── cli.py                    # Commander entry point
+        ├── annotate/                 # Tool: Path Annotator
+        ├── inventory/                # Tool: API Inventory
+        ├── markdown/                 # Tool: Repo to Markdown
+        └── shared/                   # Shared Infrastructure
+            ├── repo/                 # Domain Kernel (File scanning, Tree models)
+            └── ui/                   # "Winx" UI Framework (TUI/GUI Base classes)
+
+```
+
 ## 🧰 The Toolkit
 
 | Tool | Commander Command | Description |
@@ -17,7 +34,28 @@ This keeps your console entry points stable (one script) while still letting eac
 | **API Inventory** | `codetools run inventory` | **Static API Surface Extractor.**<br>Uses AST analysis to traverse a Python repository and generate a structured YAML inventory of all packages, modules, classes, and methods. |
 | **Repo → Markdown** | `codetools run markdown` | **LLM Context Packager.**<br>Converts a repository into a single, well-structured Markdown document (tree + file contents) optimized for pasting into LLMs. Supports GUI/TUI/CLI-style selection depending on the tool implementation. |
 
------
+---
+
+## 🏗️ Architecture & Shared Libraries
+
+CodeTools is built on a modular kernel (`src/codetools/shared`) to ensure consistency across all utilities.
+
+### 1. The Repository Kernel (`codetools.shared.repo`)
+
+Centralizes the logic for how the toolkit "sees" a codebase.
+
+* **`RepoService`**: Handles recursive directory scanning, enforcing `.gitignore` rules, and safe text reading.
+* **`RepoConfig`**: Defines global constants for ignored directories (`.git`, `__pycache__`) and allowed extensions.
+* **`TreeNode`**: A recursive data structure used to model the file system for UI rendering.
+
+### 2. The Winx UI Framework (`codetools.shared.ui`)
+
+A unified set of abstract base classes that allow tools to support multiple interface modes with minimal boilerplate.
+
+* **`WinxTuiApp`**: Wraps `curses` handling, color initialization, and the main event loop for Terminal UIs.
+* **`WinxGuiApp`**: Wraps `tkinter` setup and window management for Graphical UIs.
+
+---
 
 ## 📦 Installation
 
@@ -29,12 +67,14 @@ This project is configured as a package and uses **uv** for dependency managemen
 
 ```bash
 uv sync
+
 ```
 
 **Developer Installation (includes dev group)**
 
 ```bash
 uv sync --all-groups
+
 ```
 
 ---
@@ -53,6 +93,7 @@ codetools run annotate --root . --config path-annotate.jsonc --dry-run
 
 # Apply changes (Add headers to Python, JS, SQL, etc.)
 codetools run annotate --root . --config path-annotate.jsonc
+
 ```
 
 ### 2. Inventory (API Inventory)
@@ -65,6 +106,7 @@ codetools run inventory --root ./src --output api_dump.yaml --public-only
 
 # Check statistics of the codebase (Summary only)
 codetools run inventory --root ./src --print-summary --dry-run
+
 ```
 
 ### 3. Markdown (Repo → Markdown)
@@ -74,6 +116,7 @@ Generate a single Markdown artifact containing a directory tree + selected file 
 ```bash
 # Run the markdown tool (mode/flags are owned by the markdown tool itself)
 codetools run markdown -h
+
 ```
 
 #### `codetools run markdown ...` context
@@ -83,6 +126,7 @@ codetools run markdown -h
 
 ```bash
 codetools run markdown -h
+
 ```
 
 * And you run the tool the same way you would if it were standalone—just with the `codetools run markdown` prefix.
@@ -98,6 +142,7 @@ codetools run markdown --tui
 
 # Example: GUI mode default (if supported by the tool)
 codetools run markdown
+
 ```
 
 ---
@@ -115,6 +160,7 @@ pre-commit install
 
 # Run the test suite
 pytest
+
 ```
 
 For detailed configuration options regarding specific tools, please refer to the sub-readmes in:
